@@ -5,7 +5,8 @@
     import androidx.room.OnConflictStrategy
     import androidx.room.Query
     import com.example.misrs.data.entities.StatusRecord
-    import java.util.UUID
+    import kotlinx.coroutines.flow.Flow
+
 
     @Dao
     interface StatusRecordDao {
@@ -20,10 +21,10 @@
         fun getLastRecord(): StatusRecord?
 
         @Query("SELECT * FROM status_record ORDER BY record_time DESC LIMIT 10")
-        suspend fun getLast10Records(): List<StatusRecord>
+        fun getLast10RecordsFlow(): Flow<List<StatusRecord>>
 
-        @Query("SELECT * FROM status_record WHERE sync_status = 0")
-        suspend fun getUnsyncedRecords(): List<StatusRecord>
+//        @Query("SELECT * FROM status_record WHERE sync_status = 0")
+//        suspend fun getUnsyncedRecords(): List<StatusRecord>
 
         @Query("UPDATE status_record SET sync_status = 1 WHERE uuid IN (:uuids)")
         suspend fun markAsSynced(uuids: List<String>)

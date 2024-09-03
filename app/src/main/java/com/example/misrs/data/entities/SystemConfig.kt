@@ -5,7 +5,8 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "system_config")
 data class SystemConfig(
-    @PrimaryKey val device_id: String,
+    @PrimaryKey val id: Int = 1, // Constant primary key
+    val device_id: String,
     val password: String,
     val check_connect_period: Int = 10,  // Default value
     val data_sync_period: Int = 3600,    // Default value

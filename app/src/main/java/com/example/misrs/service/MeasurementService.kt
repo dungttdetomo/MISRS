@@ -22,6 +22,7 @@ import com.example.misrs.network.dto.UploadBatchRequest
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
 import java.util.*
@@ -35,10 +36,15 @@ class MeasurementService : Service() {
     private lateinit var systemConfigRepository: SystemConfigRepository
     private lateinit var fusedLocationClient: FusedLocationProviderClient
 
+    companion object {
+        val measurementStatusFlow = MutableSharedFlow<Boolean>(replay = 1) // Ensure the latest status is replayed to new collectors
+    }
+
     override fun onCreate() {
         super.onCreate()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         startForegroundService()
+        emitServiceStatus(true)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -53,9 +59,15 @@ class MeasurementService : Service() {
     }
 
     override fun onDestroy() {
+        Log.d("MeasurementService", "onDestroy called, stopping service")
         super.onDestroy()
         stopMeasurement()
     }
+
+    private fun emitServiceStatus(isRunning: Boolean) {
+        measurementStatusFlow.tryEmit(isRunning)
+    }
+
 
     private fun startMeasurement(deviceId: String, password: String) {
         measurementJob = CoroutineScope(Dispatchers.IO).launch {
@@ -88,7 +100,7 @@ class MeasurementService : Service() {
                 )
 
                 val lastRecord = statusRepository.getLastRecord()
-                if (config != null && shouldSaveNewRecord(lastRecord, newRecord, config.point_distance)) {
+                if (shouldSaveNewRecord(lastRecord, newRecord, config.point_distance)) {
                     Log.d("MeasurementService", "Saving new record to database: $newRecord")
                     statusRepository.insertRecord(newRecord)
                 } else {
@@ -105,11 +117,15 @@ class MeasurementService : Service() {
     }
 
     private fun stopMeasurement() {
+        Log.d("MeasurementService", "Stopping measurement jobs")
         measurementJob?.cancel()
         dataSyncJob?.cancel()
         getConfigJob?.cancel()
+        Log.d("MeasurementService", "Stopping foreground service and self")
+        emitServiceStatus(false) // Emit service stopped status before stopping the service
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+        Log.d("MeasurementService", "Service should now be stopped")
     }
 
     private fun scheduleDataSync(deviceId: String, password: String): Job {
@@ -144,7 +160,7 @@ class MeasurementService : Service() {
 
     private suspend fun getUpdatedConfig(deviceId: String): SystemConfig? {
         Log.d("MeasurementService", "Fetching updated config from database for deviceId: $deviceId")
-        val config = systemConfigRepository.getConfig(deviceId)
+        val config = systemConfigRepository.getConfig()
         if (config != null) {
             Log.d("MeasurementService", "Config loaded: $config")
         } else {
@@ -170,7 +186,7 @@ class MeasurementService : Service() {
                         for (i in 0 until failedRecords.length()) {
                             failedUuids.add(failedRecords.getString(i))
                         }
-                        val successfulRecords = unsyncedRecords.filter { !failedUuids.contains(it.uuid.toString()) }
+                        val successfulRecords = unsyncedRecords.filter { !failedUuids.contains(it.uuid) }
                         if (successfulRecords.isNotEmpty()) {
                             Log.d("MeasurementService", "Records synced successfully: ${successfulRecords.size} records")
                             statusRepository.markRecordsAsSynced(successfulRecords.map { it.uuid })

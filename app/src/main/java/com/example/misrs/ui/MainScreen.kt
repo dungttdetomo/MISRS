@@ -7,20 +7,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.observe
-import com.example.misrs.data.entities.StatusRecord
 import com.example.misrs.viewmodel.MainViewModel
-import kotlinx.coroutines.launch
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.navigation.NavController
 
 @Composable
-fun MainScreen(viewModel: MainViewModel, deviceId: String, password: String) {
-    var isMeasuring by remember { mutableStateOf(false) }
-    var records by remember { mutableStateOf<List<StatusRecord>>(emptyList()) }
-    val coroutineScope = rememberCoroutineScope()
+fun MainScreen(
+    viewModel: MainViewModel,
+    navController: NavController,
+    deviceId: String,
+    password: String
+) {
+    val isMeasuring by viewModel.isMeasuring.collectAsState()
     val showDialog by viewModel.showPermissionDialog.observeAsState(false)
     val context = LocalContext.current
 
@@ -58,13 +59,10 @@ fun MainScreen(viewModel: MainViewModel, deviceId: String, password: String) {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Button(onClick = {
-            coroutineScope.launch {
-                if (isMeasuring) {
-                    viewModel.stopMeasurement()
-                } else {
-                    viewModel.startMeasurement(deviceId, password)
-                }
-                isMeasuring = !isMeasuring
+            if (isMeasuring) {
+                viewModel.stopMeasurement()
+            } else {
+                viewModel.startMeasurement(deviceId, password)
             }
         }) {
             Text(if (isMeasuring) "Stop" else "Start")
@@ -73,18 +71,19 @@ fun MainScreen(viewModel: MainViewModel, deviceId: String, password: String) {
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(onClick = {
-            coroutineScope.launch {
-                records = viewModel.getLast10Records()
-            }
+            // Điều hướng đến màn hình Setting
+            navController.navigate("settings")
         }) {
-            Text("View Records")
+            Text("Setting")
         }
 
-        if (records.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(16.dp))
-            records.forEach { record ->
-                Text(text = "${record.record_time}: ${record.latitude}, ${record.longitude} - Status: ${record.connect_status}")
-            }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(onClick = {
+            // Điều hướng đến màn hình View
+            navController.navigate("view")
+        }) {
+            Text("View")
         }
     }
 }

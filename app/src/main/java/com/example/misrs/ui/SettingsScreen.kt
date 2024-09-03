@@ -42,7 +42,7 @@ fun SettingsScreen(viewModel: SettingsViewModel, onSettingsSuccess: (String, Str
                 errorMessage = null
                 onSettingsSuccess(deviceId, password) // Call onSettingsSuccess with the provided credentials
             }, onFailure = {
-                errorMessage = "Invalid Device ID or Password"
+                errorMessage = "Setting got error. Please try again."
             })
         }) {
             Text("Setting")

@@ -8,10 +8,16 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.viewModelScope
 import com.example.misrs.data.entities.StatusRecord
+import com.example.misrs.data.entities.SystemConfig
 import com.example.misrs.data.repository.StatusRepository
 import com.example.misrs.data.repository.SystemConfigRepository
 import com.example.misrs.service.MeasurementService
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 class MainViewModel(
     application: Application,
@@ -21,6 +27,17 @@ class MainViewModel(
 
     private val _showPermissionDialog = MutableLiveData<Boolean>()
     val showPermissionDialog: LiveData<Boolean> get() = _showPermissionDialog
+
+    private val _isMeasuring = MutableStateFlow(false)
+    val isMeasuring = _isMeasuring
+
+    init {
+        viewModelScope.launch {
+            MeasurementService.measurementStatusFlow.collectLatest { isRunning ->
+                _isMeasuring.value = isRunning
+            }
+        }
+    }
 
     fun startMeasurement(deviceId: String, password: String) {
         Log.d("MainViewModel", "Starting MeasurementService")
@@ -66,9 +83,11 @@ class MainViewModel(
                 backgroundLocationPermission == PackageManager.PERMISSION_GRANTED
     }
 
-    suspend fun getLast10Records(): List<StatusRecord> {
-        val records = statusRepository.getLast10Records()
-        Log.d("MainViewModel", "Fetched last 10 records: $records")
-        return records
+     fun getCurrentSystemConfig(): Flow<SystemConfig?> {
+        return systemConfigRepository.getConfigFlow()
+    }
+
+     fun getLast10Records(): Flow<List<StatusRecord>> {
+        return statusRepository.getLast10RecordsFlow()
     }
 }

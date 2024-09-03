@@ -3,12 +3,12 @@ package com.example.misrs.data.repository
 import android.content.Context
 import com.example.misrs.data.AppDatabase
 import com.example.misrs.data.entities.StatusRecord
-import com.example.misrs.network.NetworkModule
 import com.example.misrs.network.dto.UploadRecordDto
+import kotlinx.coroutines.flow.Flow
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.UUID
+
 
 class StatusRepository(context: Context) {
 
@@ -41,8 +41,8 @@ class StatusRepository(context: Context) {
         return statusRecordDao.getLastRecord()
     }
 
-    suspend fun getLast10Records(): List<StatusRecord> {
-        return statusRecordDao.getLast10Records()
+    fun getLast10RecordsFlow(): Flow<List<StatusRecord>> {
+        return statusRecordDao.getLast10RecordsFlow()
     }
 
     suspend fun getUnsyncedRecords(limit: Int = 10): List<StatusRecord> {
