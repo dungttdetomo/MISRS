@@ -37,16 +37,16 @@ class StatusRepository(context: Context) {
         return formatter.format(instant)
     }
 
-    fun getLastRecord(): StatusRecord? {
-        return statusRecordDao.getLastRecord()
-    }
-
     fun getLast10RecordsFlow(): Flow<List<StatusRecord>> {
         return statusRecordDao.getLast10RecordsFlow()
     }
 
     suspend fun getUnsyncedRecords(limit: Int = 10): List<StatusRecord> {
         return statusRecordDao.getUnsyncedRecords(limit)
+    }
+
+    suspend fun deleteRecords(uuids: List<String>) {
+        statusRecordDao.deleteRecords(uuids)
     }
 
     suspend fun markRecordsAsSynced(uuids: List<String>) {

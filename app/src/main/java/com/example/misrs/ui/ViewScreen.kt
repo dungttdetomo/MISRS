@@ -8,11 +8,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.example.misrs.viewmodel.MainViewModel
+import java.text.SimpleDateFormat
+import java.util.*
 
 @Composable
 fun ViewScreen(viewModel: MainViewModel, navController: NavController) {
     val systemConfig = viewModel.getCurrentSystemConfig().collectAsState(initial = null)
     val records = viewModel.getLast10Records().collectAsState(initial = emptyList())
+    val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()) }
 
     Column(
         modifier = Modifier
@@ -45,7 +48,8 @@ fun ViewScreen(viewModel: MainViewModel, navController: NavController) {
         Spacer(modifier = Modifier.height(8.dp))
 
         records.value.forEach { record ->
-            Text(text = "${record.record_time}: ${record.latitude}, ${record.longitude} - Status: ${record.connect_status}")
+            val formattedTime = dateFormat.format(Date(record.record_time.toLong()))
+            Text(text = "$formattedTime: ${record.latitude}, ${record.longitude} - Status: ${record.connect_status}")
         }
 
         Spacer(modifier = Modifier.height(24.dp))

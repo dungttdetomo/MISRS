@@ -40,7 +40,7 @@ class MainViewModel(
     }
 
     fun startMeasurement(deviceId: String, password: String) {
-        Log.d("MainViewModel", "Starting MeasurementService")
+        Log.d("MainViewModel", "Starting MeasurementService with deviceId: $deviceId and password: $password")
         val context = getApplication<Application>()
         if (!hasLocationPermission()) {
             _showPermissionDialog.postValue(true)

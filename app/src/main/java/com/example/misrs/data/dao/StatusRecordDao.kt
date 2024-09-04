@@ -23,6 +23,9 @@
         @Query("SELECT * FROM status_record ORDER BY record_time DESC LIMIT 10")
         fun getLast10RecordsFlow(): Flow<List<StatusRecord>>
 
+        @Query("DELETE FROM status_record WHERE uuid IN (:uuids)")
+        suspend fun deleteRecords(uuids: List<String>)
+
 //        @Query("SELECT * FROM status_record WHERE sync_status = 0")
 //        suspend fun getUnsyncedRecords(): List<StatusRecord>
 

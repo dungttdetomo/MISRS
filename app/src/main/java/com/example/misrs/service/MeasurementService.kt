@@ -16,6 +16,7 @@ import com.example.misrs.data.entities.StatusRecord
 import com.example.misrs.data.entities.SystemConfig
 import com.example.misrs.data.repository.StatusRepository
 import com.example.misrs.data.repository.SystemConfigRepository
+import com.example.misrs.manager.LastRecordManager
 import com.example.misrs.mapper.SystemConfigMapper
 import com.example.misrs.network.NetworkModule
 import com.example.misrs.network.dto.UploadBatchRequest
@@ -35,6 +36,7 @@ class MeasurementService : Service() {
     private lateinit var statusRepository: StatusRepository
     private lateinit var systemConfigRepository: SystemConfigRepository
     private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private lateinit var lastRecordManager: LastRecordManager
 
     companion object {
         val measurementStatusFlow = MutableSharedFlow<Boolean>(replay = 1) // Ensure the latest status is replayed to new collectors
@@ -42,8 +44,17 @@ class MeasurementService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        try {
+            fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        } catch (e: Exception) {
+            Log.e("MeasurementService", "Error initializing fusedLocationClient: ${e.message}")
+            stopSelf()  // Dừng dịch vụ nếu không thể khởi tạo `fusedLocationClient`
+        }
+        // Khởi tạo lastRecordManager
+        lastRecordManager = LastRecordManager(applicationContext)
+        // Bắt đầu foreground service với notification
         startForegroundService()
+        // Phát tín hiệu rằng service đã bắt đầu
         emitServiceStatus(true)
     }
 
@@ -51,10 +62,18 @@ class MeasurementService : Service() {
         val deviceId = intent?.getStringExtra("DEVICE_ID") ?: ""
         val password = intent?.getStringExtra("PASSWORD") ?: ""
 
-        statusRepository = StatusRepository(applicationContext)
-        systemConfigRepository = SystemConfigRepository(applicationContext)
+        Log.d("MeasurementService", "Received deviceId: $deviceId, password: $password")
 
-        startMeasurement(deviceId, password)
+        if (deviceId.isEmpty() || password.isEmpty()) {
+            // Nếu không có deviceId hoặc password, dừng dịch vụ
+            Log.e("MeasurementService", "Device ID or password is missing, stopping service.")
+            stopSelf()
+        } else {
+            statusRepository = StatusRepository(applicationContext)
+            systemConfigRepository = SystemConfigRepository(applicationContext)
+            startMeasurement(deviceId, password)
+        }
+
         return START_STICKY
     }
 
@@ -70,24 +89,60 @@ class MeasurementService : Service() {
 
 
     private fun startMeasurement(deviceId: String, password: String) {
+        // Ensure that the job is only started if it's not already running
+        if (measurementJob?.isActive == true) return
         measurementJob = CoroutineScope(Dispatchers.IO).launch {
-            while (true) {
+            while (isActive) {
                 val config = getUpdatedConfig(deviceId)
                 if (config == null) {
                     Log.w("MeasurementService", "Failed to load config")
-                    break
+                    continue
                 }
                 Log.d("MeasurementService", "Starting new measurement cycle")
                 val location = getCurrentLocation()
-                val connectStatus = if (location != null) {
-                    Log.d("MeasurementService", "Location obtained: ${location.latitude}, ${location.longitude}")
-                    withContext(Dispatchers.IO) {
-                        val response = NetworkModule.api.checkConnection(deviceId, password).execute()
-                        if (response.isSuccessful) 1 else 0
-                    }
+                val lastRecord = lastRecordManager.getLastRecord()
+                var connectStatus: Int
+                Log.d("MeasurementService", "Last location: lat=${lastRecord?.latitude}, lon=${lastRecord?.longitude}")
+                Log.d("MeasurementService", "New location: lat=${location?.latitude}, lon=${location?.longitude}")
+
+                // Tính khoảng cách một lần duy nhất
+                val distance = if (location != null && lastRecord != null) {
+                    val result = FloatArray(1)
+                    Location.distanceBetween(
+                        lastRecord.latitude.toDouble(),
+                        lastRecord.longitude.toDouble(),
+                        location.latitude,
+                        location.longitude,
+                        result
+                    )
+                    result[0]
                 } else {
-                    Log.w("MeasurementService", "Failed to obtain location")
-                    0
+                    -1f // Nếu không có lastRecord hoặc location hiện tại null, đặt khoảng cách là -1
+                }
+
+                Log.d("MeasurementService", "Calculated distance: $distance meters")
+
+                // Xử lý logic kiểm tra kết nối và lấy trạng thái kết nối
+                connectStatus = try {
+                    if (distance > 0) {
+                        Log.d("MeasurementService", "Location changed, checking connection")
+                        withContext(Dispatchers.IO) {
+                            val response = NetworkModule.api.checkConnection(deviceId, password).execute()
+                            if (response.isSuccessful) 1 else 0
+                        }
+                    } else if (lastRecord?.connect_status == 0) {
+                        Log.d("MeasurementService", "Location unchanged but previous connection status was 0, rechecking connection")
+                        withContext(Dispatchers.IO) {
+                            val response = NetworkModule.api.checkConnection(deviceId, password).execute()
+                            if (response.isSuccessful) 1 else 0
+                        }
+                    } else {
+                        Log.d("MeasurementService", "Location unchanged and previous connection status was 1, skipping connection check")
+                        lastRecord?.connect_status ?: 0
+                    }
+                } catch (e: Exception) {
+                    Log.e("MeasurementService", "Network error during checkConnection: ${e.message}")
+                    0 // Nếu lỗi mạng, đặt trạng thái kết nối là 0 (không kết nối)
                 }
 
                 val newRecord = StatusRecord(
@@ -99,10 +154,12 @@ class MeasurementService : Service() {
                     connect_status = connectStatus
                 )
 
-                val lastRecord = statusRepository.getLastRecord()
+                Log.d("MeasurementService", "Configured point distance: ${config.point_distance} meters")
+
                 if (shouldSaveNewRecord(lastRecord, newRecord, config.point_distance)) {
                     Log.d("MeasurementService", "Saving new record to database: $newRecord")
                     statusRepository.insertRecord(newRecord)
+                    lastRecordManager.saveLastRecord(newRecord)  // Lưu lại bản ghi mới nhất
                 } else {
                     Log.d("MeasurementService", "New record not saved, point distance too small or no config")
                 }
@@ -115,6 +172,7 @@ class MeasurementService : Service() {
         dataSyncJob = scheduleDataSync(deviceId, password)
         getConfigJob = scheduleGetConfig(deviceId, password)
     }
+
 
     private fun stopMeasurement() {
         Log.d("MeasurementService", "Stopping measurement jobs")
@@ -190,6 +248,9 @@ class MeasurementService : Service() {
                         if (successfulRecords.isNotEmpty()) {
                             Log.d("MeasurementService", "Records synced successfully: ${successfulRecords.size} records")
                             statusRepository.markRecordsAsSynced(successfulRecords.map { it.uuid })
+
+                            // Xóa các bản ghi đã tải lên thành công
+                            statusRepository.deleteRecords(successfulRecords.map { it.uuid })
                         }
                     } else {
                         Log.w("MeasurementService", "Failed to sync records")
@@ -199,9 +260,13 @@ class MeasurementService : Service() {
                 }
             } catch (e: Exception) {
                 Log.e("MeasurementService", "Error syncing records: ${e.message}")
+                // Thêm logic xử lý khi không có kết nối mạng
+                Log.d("MeasurementService", "No network connection. Unsynced records will be retried in the next sync cycle.")
+                // Không xóa các bản ghi, giữ nguyên để thử lại trong chu kỳ đồng bộ tiếp theo
             }
         }
     }
+
 
     private fun getConfig(deviceId: String, password: String) {
         CoroutineScope(Dispatchers.IO).launch {
@@ -220,15 +285,29 @@ class MeasurementService : Service() {
                 }
             } catch (e: Exception) {
                 Log.e("MeasurementService", "Error fetching config: ${e.message}")
+                // Thêm logic xử lý khi không có kết nối mạng
+                val lastConfig = systemConfigRepository.getConfig()
+                if (lastConfig != null) {
+                    Log.d("MeasurementService", "Using last known config from database: $lastConfig")
+                    // Sử dụng config từ database thay vì config mới
+                } else {
+                    Log.w("MeasurementService", "No config available in database, continuing with default or cached config")
+                }
             }
         }
     }
+
 
     @SuppressLint("MissingPermission")
     private suspend fun getCurrentLocation(): Location? {
         return try {
             val locationTask = fusedLocationClient.lastLocation
-            locationTask.await()
+            val location = locationTask.await()
+            location ?: run {
+                Log.w("MeasurementService", "Initial location fetch failed, retrying...")
+                delay(2000)  // Chờ 2 giây trước khi thử lại
+                locationTask.await()
+            }
         } catch (e: Exception) {
             Log.e("MeasurementService", "Error getting location: ${e.message}")
             null
