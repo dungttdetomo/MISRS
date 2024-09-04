@@ -53,13 +53,4 @@ class StatusRepository(context: Context) {
         statusRecordDao.markAsSynced(uuids)
     }
 
-//    suspend fun uploadUnsyncedRecords(deviceId: String, password: String) {
-//        val unsyncedRecords = statusRecordDao.getUnsyncedRecords().take(10)
-//        if (unsyncedRecords.isNotEmpty()) {
-//            val response = NetworkModule.api.uploadData(deviceId, password, unsyncedRecords).execute()
-//            if (response.isSuccessful) {
-//                statusRecordDao.markAsSynced(unsyncedRecords.map { it.uuid })
-//            }
-//        }
-//    }
 }

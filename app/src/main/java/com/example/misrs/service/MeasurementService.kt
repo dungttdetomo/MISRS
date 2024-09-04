@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.location.Location
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.misrs.R
@@ -24,7 +25,6 @@ import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
 import java.util.*
 
@@ -99,6 +99,7 @@ class MeasurementService : Service() {
                     continue
                 }
                 Log.d("MeasurementService", "Starting new measurement cycle")
+                // Lấy vị trí mới tại mỗi chu kỳ
                 val location = getCurrentLocation()
                 val lastRecord = lastRecordManager.getLastRecord()
                 var connectStatus: Int
@@ -301,13 +302,39 @@ class MeasurementService : Service() {
     @SuppressLint("MissingPermission")
     private suspend fun getCurrentLocation(): Location? {
         return try {
-            val locationTask = fusedLocationClient.lastLocation
-            val location = locationTask.await()
-            location ?: run {
-                Log.w("MeasurementService", "Initial location fetch failed, retrying...")
-                delay(2000)  // Chờ 2 giây trước khi thử lại
-                locationTask.await()
+            // Tạo yêu cầu vị trí với độ chính xác cao
+            val locationRequest = com.google.android.gms.location.LocationRequest.Builder(
+                com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY, 1000L  // Cập nhật mỗi 1 giây
+            ).build()
+
+            // Sử dụng `CompletableDeferred` để đợi cho đến khi nhận được vị trí
+            val locationDeferred = CompletableDeferred<Location?>()
+
+            val locationCallback = object : com.google.android.gms.location.LocationCallback() {
+                override fun onLocationResult(locationResult: com.google.android.gms.location.LocationResult) {
+                    super.onLocationResult(locationResult)
+                    locationResult.lastLocation?.let { location ->
+                        Log.d("MeasurementService", "New location: lat=${location.latitude}, lon=${location.longitude}")
+                        locationDeferred.complete(location)  // Trả về vị trí mới
+                    }
+                }
             }
+
+            // Yêu cầu cập nhật vị trí
+            fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper())
+
+            // Chờ vị trí từ callback
+            val location = locationDeferred.await()
+
+            // Hủy đăng ký callback sau khi lấy được vị trí
+            fusedLocationClient.removeLocationUpdates(locationCallback)
+
+            if (location != null) {
+                Log.d("MeasurementService", "Using new location: lat=${location.latitude}, lon=${location.longitude}")
+            } else {
+                Log.w("MeasurementService", "Failed to get current location")
+            }
+            location
         } catch (e: Exception) {
             Log.e("MeasurementService", "Error getting location: ${e.message}")
             null
