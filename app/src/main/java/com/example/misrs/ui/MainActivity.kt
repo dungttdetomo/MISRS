@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -17,15 +18,17 @@ import com.example.misrs.data.repository.SystemConfigRepository
 import com.example.misrs.viewmodel.MainViewModel
 import com.example.misrs.viewmodel.SettingsViewModel
 import kotlinx.coroutines.flow.collectLatest
-
+import kotlinx.coroutines.launch
 
 
 class MainActivity : ComponentActivity() {
+    private lateinit var mainViewModel: MainViewModel // Khai báo global để truy cập trong onResume
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val settingsViewModel = SettingsViewModel(SystemConfigRepository(this))
-        val mainViewModel = MainViewModel(application, StatusRepository(this), SystemConfigRepository(this))
+        mainViewModel = MainViewModel(application, StatusRepository(this), SystemConfigRepository(this))
 
         setContent {
             val navController = rememberNavController()
@@ -47,6 +50,11 @@ class MainActivity : ComponentActivity() {
                         mainViewModel.startMeasurement(config.device_id, config.password)
                     }
                 }
+            }
+
+            // Check permissions and resume measurement if granted
+            LaunchedEffect(Unit) {
+                mainViewModel.resumeMeasurementIfPermissionGranted()
             }
 
             // Wait until systemConfigState has been updated before starting NavHost
@@ -78,4 +86,22 @@ class MainActivity : ComponentActivity() {
 
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+
+        // Kiểm tra lại quyền location khi người dùng quay lại từ cài đặt
+        if (mainViewModel.hasLocationPermission()) {
+            lifecycleScope.launch {
+                mainViewModel.getCurrentSystemConfig().collectLatest { config ->
+                    // Nếu đã có config và service chưa chạy thì khởi động service
+                    if (config != null && config.device_id.isNotEmpty() && config.password.isNotEmpty() && !mainViewModel.isMeasuring.value) {
+                        mainViewModel.startMeasurement(config.device_id, config.password)
+                        Log.d("MainActivity", "Location permission granted, starting service with device_id: ${config.device_id}")
+                    }
+                }
+            }
+        }
+    }
+
 }

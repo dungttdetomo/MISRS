@@ -30,7 +30,8 @@ class MainViewModel(
 
     private val _isMeasuring = MutableStateFlow(false)
     val isMeasuring = _isMeasuring
-
+    private var pendingDeviceId: String? = null
+    private var pendingPassword: String? = null
     init {
         viewModelScope.launch {
             MeasurementService.measurementStatusFlow.collectLatest { isRunning ->
@@ -43,6 +44,8 @@ class MainViewModel(
         Log.d("MainViewModel", "Starting MeasurementService with deviceId: $deviceId and password: $password")
         val context = getApplication<Application>()
         if (!hasLocationPermission()) {
+            pendingDeviceId = deviceId
+            pendingPassword = password
             _showPermissionDialog.postValue(true)
             return
         }
@@ -51,6 +54,20 @@ class MainViewModel(
             putExtra("PASSWORD", password)
         }
         context.startService(intent)
+    }
+
+    fun resumeMeasurementIfPermissionGranted() {
+        val context = getApplication<Application>()
+        if (pendingDeviceId != null && pendingPassword != null && hasLocationPermission()) {
+            val intent = Intent(context, MeasurementService::class.java).apply {
+                putExtra("DEVICE_ID", pendingDeviceId)
+                putExtra("PASSWORD", pendingPassword)
+            }
+            context.startService(intent)
+            // Reset pending values
+            pendingDeviceId = null
+            pendingPassword = null
+        }
     }
 
     fun stopMeasurement() {
@@ -64,7 +81,7 @@ class MainViewModel(
         _showPermissionDialog.postValue(false)
     }
 
-    private fun hasLocationPermission(): Boolean {
+    fun hasLocationPermission(): Boolean {
         val context = getApplication<Application>()
         val fineLocationPermission = ContextCompat.checkSelfPermission(
             context,
