@@ -41,7 +41,7 @@ class StatusRepository(context: Context) {
         return statusRecordDao.getLast10RecordsFlow()
     }
 
-    suspend fun getUnsyncedRecords(limit: Int = 10): List<StatusRecord> {
+    suspend fun getUnsyncedRecords(limit: Int = 360): List<StatusRecord> {
         return statusRecordDao.getUnsyncedRecords(limit)
     }
 
