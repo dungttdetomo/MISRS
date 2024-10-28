@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.misrs"
+    namespace = "com.dungtt.misrs"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.misrs"
+        applicationId = "com.dungtt.misrs"
         minSdk = 29
         targetSdk = 34
         versionCode = 1
