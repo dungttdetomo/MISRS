@@ -47,10 +47,13 @@ fun ViewScreen(viewModel: MainViewModel, navController: NavController) {
         )
         Spacer(modifier = Modifier.height(8.dp))
 
+        // Trong ViewScreen
         records.value.forEach { record ->
             val formattedTime = dateFormat.format(Date(record.record_time.toLong()))
-            Text(text = "$formattedTime: ${record.latitude}, ${record.longitude} - Status: ${record.connect_status}")
+            val distanceText = record.distance?.let { "${it}m" } ?: "N/A" // Hiển thị "N/A" nếu không có giá trị distance
+            Text(text = "$formattedTime: ${record.latitude}, ${record.longitude} - Status: ${record.connect_status} - Distance: $distanceText")
         }
+
 
         Spacer(modifier = Modifier.height(24.dp))
 

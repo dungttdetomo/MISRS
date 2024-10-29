@@ -12,6 +12,7 @@ data class StatusRecord(
     val latitude: Float,
     val longitude: Float,
     val connect_status: Int,
+    val distance: Float? = null,
     val sync_status: Int = 0, // 0 means not synced, 1 means synced
     var failed: Boolean = false  // New field to track failed uploads
 )

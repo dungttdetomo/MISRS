@@ -152,7 +152,8 @@ class MeasurementService : Service() {
                     record_time = System.currentTimeMillis().toString(),
                     latitude = location?.latitude?.toFloat() ?: 0f,
                     longitude = location?.longitude?.toFloat() ?: 0f,
-                    connect_status = connectStatus
+                    connect_status = connectStatus,
+                    distance = if (distance >= 0) distance else null
                 )
 
                 Log.d("MeasurementService", "Configured point distance: ${config.point_distance} meters")

@@ -26,9 +26,6 @@
         @Query("DELETE FROM status_record WHERE uuid IN (:uuids)")
         suspend fun deleteRecords(uuids: List<String>)
 
-//        @Query("SELECT * FROM status_record WHERE sync_status = 0")
-//        suspend fun getUnsyncedRecords(): List<StatusRecord>
-
         @Query("UPDATE status_record SET sync_status = 1 WHERE uuid IN (:uuids)")
         suspend fun markAsSynced(uuids: List<String>)
     }

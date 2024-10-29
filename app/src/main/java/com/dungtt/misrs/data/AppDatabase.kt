@@ -13,7 +13,7 @@ import com.dungtt.misrs.data.entities.SystemConfig
 
 @Database(
     entities = [SystemConfig::class, StatusRecord::class],
-    version = 2,
+    version = 3, // Tăng phiên bản lên 3
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -25,10 +25,9 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: AppDatabase? = null
 
-        // Migration from version 1 to 2
+        // Migration from version 1 to 2 (giữ nguyên như cũ)
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // Create new table with the new schema
                 db.execSQL("""
                     CREATE TABLE IF NOT EXISTS `system_config_new` (
                         `id` INTEGER PRIMARY KEY NOT NULL,
@@ -41,18 +40,21 @@ abstract class AppDatabase : RoomDatabase() {
                     )
                 """.trimIndent())
 
-                // Copy the data from the old table to the new table
                 db.execSQL("""
                     INSERT INTO `system_config_new` (`id`, `device_id`, `password`, `check_connect_period`, `data_sync_period`, `get_config_period`, `point_distance`)
                     SELECT 1, `device_id`, `password`, `check_connect_period`, `data_sync_period`, `get_config_period`, `point_distance`
                     FROM `system_config`
                 """.trimIndent())
 
-                // Drop the old table
                 db.execSQL("DROP TABLE `system_config`")
-
-                // Rename the new table to the old table name
                 db.execSQL("ALTER TABLE `system_config_new` RENAME TO `system_config`")
+            }
+        }
+
+        // Migration from version 2 to 3 to add 'distance' column to StatusRecord
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `status_record` ADD COLUMN `distance` REAL DEFAULT NULL")
             }
         }
 
@@ -62,10 +64,13 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "misrs_database"
-                ).addMigrations(MIGRATION_1_2).build()
+                )
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3) // Thêm migration mới
+                    .build()
                 INSTANCE = instance
                 instance
             }
         }
     }
 }
+
